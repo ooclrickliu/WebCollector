@@ -17,12 +17,10 @@
  */
 package cn.edu.hfut.dmic.webcollector.fetcher;
 
-import cn.edu.hfut.dmic.webcollector.generator.StandardGenerator;
+import cn.edu.hfut.dmic.webcollector.crawldb.DBManager;
+import cn.edu.hfut.dmic.webcollector.crawldb.Generator;
 import cn.edu.hfut.dmic.webcollector.model.CrawlDatum;
-import cn.edu.hfut.dmic.webcollector.model.Links;
-import cn.edu.hfut.dmic.webcollector.model.Page;
-import cn.edu.hfut.dmic.webcollector.net.HttpRequester;
-import cn.edu.hfut.dmic.webcollector.net.HttpResponse;
+import cn.edu.hfut.dmic.webcollector.model.CrawlDatums;
 import cn.edu.hfut.dmic.webcollector.util.Config;
 
 import java.io.IOException;
@@ -31,11 +29,12 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * deep web抓取器
+ * 抓取器
  *
  * @author hu
  */
@@ -43,18 +42,18 @@ public class Fetcher {
 
     public static final Logger LOG = LoggerFactory.getLogger(Fetcher.class);
 
-    public DbUpdater dbUpdater = null;
+    public DBManager dbManager;
 
-    public HttpRequester httpRequester = null;
-
-    public VisitorFactory visitorFactory = null;
+    public Executor executor;
 
     private AtomicInteger activeThreads;
+    private AtomicInteger startedThreads;
     private AtomicInteger spinWaiting;
     private AtomicLong lastRequestStart;
     private QueueFeeder feeder;
     private FetchQueue fetchQueue;
-    private int retry=3;
+    private long executeInterval = 0;
+
 
     /**
      *
@@ -66,61 +65,43 @@ public class Fetcher {
      */
     public static final int FETCH_FAILED = 2;
     private int threads = 50;
-    private boolean isContentStored = false;
+    //private boolean isContentStored = false;
 
+    public Executor getExecutor() {
+        return executor;
+    }
+
+    public void setExecutor(Executor executor) {
+        this.executor = executor;
+    }
+
+  
     /**
      *
      */
     public static class FetchItem {
 
-        /**
-         *
-         */
         public CrawlDatum datum;
 
-        /**
-         *
-         * @param datum
-         */
         public FetchItem(CrawlDatum datum) {
             this.datum = datum;
         }
     }
 
-    /**
-     *
-     */
     public static class FetchQueue {
 
-        /**
-         *
-         */
         public AtomicInteger totalSize = new AtomicInteger(0);
 
-        /**
-         *
-         */
         public final List<FetchItem> queue = Collections.synchronizedList(new LinkedList<FetchItem>());
 
-        /**
-         *
-         */
         public void clear() {
             queue.clear();
         }
 
-        /**
-         *
-         * @return
-         */
         public int getSize() {
             return queue.size();
         }
 
-        /**
-         *
-         * @param item
-         */
         public synchronized void addFetchItem(FetchItem item) {
             if (item == null) {
                 return;
@@ -129,10 +110,6 @@ public class Fetcher {
             totalSize.incrementAndGet();
         }
 
-        /**
-         *
-         * @return
-         */
         public synchronized FetchItem getFetchItem() {
             if (queue.isEmpty()) {
                 return null;
@@ -140,46 +117,25 @@ public class Fetcher {
             return queue.remove(0);
         }
 
-        /**
-         *
-         */
         public synchronized void dump() {
             for (int i = 0; i < queue.size(); i++) {
                 FetchItem it = queue.get(i);
-                LOG.info("  " + i + ". " + it.datum.getUrl());
+                LOG.info("  " + i + ". " + it.datum.url());
             }
 
         }
 
     }
 
-    /**
-     *
-     */
     public static class QueueFeeder extends Thread {
 
-        /**
-         *
-         */
         public FetchQueue queue;
 
-        /**
-         *
-         */
-        public StandardGenerator generator;
+        public Generator generator;
 
-        /**
-         *
-         */
         public int size;
 
-        /**
-         *
-         * @param queue
-         * @param generator
-         * @param size
-         */
-        public QueueFeeder(FetchQueue queue, StandardGenerator generator, int size) {
+        public QueueFeeder(FetchQueue queue, Generator generator, int size) {
             this.queue = queue;
             this.generator = generator;
             this.size = size;
@@ -195,6 +151,7 @@ public class Fetcher {
                 }
             }
         }
+
         public boolean running = true;
 
         @Override
@@ -225,7 +182,6 @@ public class Fetcher {
                 }
 
             }
-            generator.close();
 
         }
 
@@ -235,6 +191,7 @@ public class Fetcher {
 
         @Override
         public void run() {
+            startedThreads.incrementAndGet();
             activeThreads.incrementAndGet();
             FetchItem item = null;
             try {
@@ -260,90 +217,37 @@ public class Fetcher {
 
                         lastRequestStart.set(System.currentTimeMillis());
 
-                        String url = item.datum.getUrl();
+                        CrawlDatum crawlDatum = item.datum;
+                        //String url = crawlDatum.getUrl();
+                        //Page page = getPage(crawlDatum);
 
-                        HttpResponse response = null;
-                        CrawlDatum crawlDatum = null;
-
-                        int retryCount = 0;
-
-                        Exception lastException = null;
-                        for (; retryCount <= retry; retryCount++) {
-                            if (retryCount > 0) {
-                                String suffix = "th ";
-                                switch (retryCount) {
-                                    case 1:
-                                        suffix = "st ";
-                                        break;
-                                    case 2:
-                                        suffix = "nd ";
-                                        break;
-                                    case 3:
-                                        suffix = "rd ";
-                                        break;
-                                    default:
-                                        suffix = "th ";
-                                }
-                                LOG.info("retry " + retryCount + suffix + url);
-                            }
-                            try {
-                                response = httpRequester.getResponse(url);
-                                break;
-                            } catch (Exception ex) {
-                                lastException = ex;
-                                String logMessage = "fetch " + url + " failed," + ex.toString();
-                                if (retryCount < retry) {
-                                    logMessage += "   retry";
-                                }
-                                LOG.info(logMessage);
-                            }
-                        }
-
-                        if (response != null) {
-                            LOG.info("fetch " + url);
-                            crawlDatum = new CrawlDatum(url, CrawlDatum.STATUS_DB_FETCHED, item.datum.getRetry() + retryCount);
-                        } else {
-                            LOG.info("failed " + url + " " + lastException.toString());
-                            crawlDatum = new CrawlDatum(url, CrawlDatum.STATUS_DB_UNFETCHED, item.datum.getRetry() + retryCount);
-                        }
-
+                        //crawlDatum.incrRetry(page.getRetry());
+//                        crawlDatum.setFetchTime(System.currentTimeMillis());
+                        CrawlDatums next = new CrawlDatums();
                         try {
-                            /*写入fetch信息*/
-                            dbUpdater.getSegmentWriter().wrtieFetch(crawlDatum);
-                            if (response == null) {
-                                continue;
-                            }
-                            if (response.getRedirect()) {
-                                if (response.getRealUrl() != null) {
-                                    dbUpdater.getSegmentWriter().writeRedirect(response.getUrl().toString(), response.getRealUrl().toString());
-                                }
-                            }
-                            String contentType = response.getContentType();
-                            Visitor visitor = visitorFactory.createVisitor(url, contentType);
-
-                            Page page = new Page();
-                            page.setUrl(url);
-                            page.setResponse(response);
-                            if (visitor != null) {
-                                Links nextLinks = null;
-                                try {
-                                    /*用户自定义visitor处理页面,并获取链接*/
-                                    nextLinks = visitor.visitAndGetNextLinks(page);
-                                } catch (Exception ex) {
-                                    LOG.info("Exception", ex);
-                                }
-
-                                /*写入解析出的链接*/
-                                if (nextLinks != null && !nextLinks.isEmpty()) {
-
-                                    dbUpdater.getSegmentWriter().wrtieLinks(nextLinks);
-
-                                }
-                            }
-
+                            executor.execute(crawlDatum, next);
+                            LOG.info("done: " + crawlDatum.key());
+                            crawlDatum.setStatus(CrawlDatum.STATUS_DB_SUCCESS);
                         } catch (Exception ex) {
-                            LOG.info("Exception", ex);
+                            LOG.info("failed: " + crawlDatum.key(), ex);
+                            crawlDatum.setStatus(CrawlDatum.STATUS_DB_FAILED);
+                        }
 
+                        crawlDatum.incrExecuteCount(1);
+                        crawlDatum.setExecuteTime(System.currentTimeMillis());
+                        try {
+                            dbManager.writeFetchSegment(crawlDatum);
+                            if (crawlDatum.getStatus() == CrawlDatum.STATUS_DB_SUCCESS && !next.isEmpty()) {
+                                dbManager.writeParseSegment(next);
+                            }
+                        } catch (Exception ex) {
+                            LOG.info("Exception when updating db", ex);
+                        }
+                        if (executeInterval > 0) {
+                            try {
+                                Thread.sleep(executeInterval);
+                            } catch (Exception sleepEx) {
+                            }
                         }
 
                     } catch (Exception ex) {
@@ -362,120 +266,106 @@ public class Fetcher {
 
     }
 
-    private void before() throws Exception {
-        //DbUpdater recoverDbUpdater = createRecoverDbUpdater();
-
-        try {
-
-            if (dbUpdater.isLocked()) {
-                dbUpdater.merge();
-                dbUpdater.unlock();
-            }
-
-        } catch (Exception ex) {
-            LOG.info("Exception", ex);
-        }
-
-        dbUpdater.lock();
-        dbUpdater.getSegmentWriter().init();
-        running = true;
-    }
-
     /**
      * 抓取当前所有任务，会阻塞到爬取完成
      *
      * @param generator 给抓取提供任务的Generator(抓取任务生成器)
-     * @throws IOException
+     * @throws IOException 异常
      */
-    public void fetchAll(StandardGenerator generator) throws Exception {
-        if (visitorFactory == null) {
-            LOG.info("Please specify a VisitorFactory!");
+    public void fetchAll(Generator generator) throws Exception {
+        if (executor == null) {
+            LOG.info("Please Specify A Executor!");
             return;
         }
-        before();
+        
+         dbManager.merge();
 
-        lastRequestStart = new AtomicLong(System.currentTimeMillis());
+        try {
+            generator.open();
+            LOG.info("open generator:" + generator.getClass().getName());
+            dbManager.initSegmentWriter();
+            LOG.info("init segmentWriter:" + dbManager.getClass().getName());
+            running = true;
 
-        activeThreads = new AtomicInteger(0);
-        spinWaiting = new AtomicInteger(0);
-        fetchQueue = new FetchQueue();
-        feeder = new QueueFeeder(fetchQueue, generator, 1000);
-        feeder.start();
+            lastRequestStart = new AtomicLong(System.currentTimeMillis());
 
-        FetcherThread[] fetcherThreads = new FetcherThread[threads];
-        for (int i = 0; i < threads; i++) {
-            fetcherThreads[i] = new FetcherThread();
-            fetcherThreads[i].start();
-        }
+            activeThreads = new AtomicInteger(0);
+            startedThreads = new AtomicInteger(0);
+            spinWaiting = new AtomicInteger(0);
+            fetchQueue = new FetchQueue();
+            feeder = new QueueFeeder(fetchQueue, generator, 1000);
+            feeder.start();
 
-        do {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException ex) {
-            }
-            LOG.info("-activeThreads=" + activeThreads.get()
-                    + ", spinWaiting=" + spinWaiting.get() + ", fetchQueue.size="
-                    + fetchQueue.getSize());
-
-            if (!feeder.isAlive() && fetchQueue.getSize() < 5) {
-                fetchQueue.dump();
+            FetcherThread[] fetcherThreads = new FetcherThread[threads];
+            for (int i = 0; i < threads; i++) {
+                fetcherThreads[i] = new FetcherThread();
+                fetcherThreads[i].start();
             }
 
-            if ((System.currentTimeMillis() - lastRequestStart.get()) > Config.requestMaxInterval) {
-                LOG.info("Aborting with " + activeThreads + " hung threads.");
-                break;
-            }
+            do {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ex) {
+                }
+                LOG.info("-activeThreads=" + activeThreads.get()
+                        + ", spinWaiting=" + spinWaiting.get() + ", fetchQueue.size="
+                        + fetchQueue.getSize());
 
-        } while (activeThreads.get() > 0 && running);
-        running = false;
-        long waitThreadEndStartTime = System.currentTimeMillis();
-        if (activeThreads.get() > 0) {
-            LOG.info("wait for activeThreads to end");
-        }
-        /*等待存活线程结束*/
-        while (activeThreads.get() > 0) {
-            LOG.info("-activeThreads=" + activeThreads.get());
-            try {
-                Thread.sleep(500);
-            } catch (Exception ex) {
+                if (!feeder.isAlive() && fetchQueue.getSize() < 5) {
+                    fetchQueue.dump();
+                }
+
+                if ((System.currentTimeMillis() - lastRequestStart.get()) > Config.THREAD_KILLER) {
+                    LOG.info("Aborting with " + activeThreads + " hung threads.");
+                    break;
+                }
+
+            } while (running && (startedThreads.get() != threads || activeThreads.get() > 0));
+            running = false;
+            long waitThreadEndStartTime = System.currentTimeMillis();
+            if (activeThreads.get() > 0) {
+                LOG.info("wait for activeThreads to end");
             }
-            if (System.currentTimeMillis() - waitThreadEndStartTime > Config.WAIT_THREAD_END_TIME) {
-                LOG.info("kill threads");
-                for (int i = 0; i < fetcherThreads.length; i++) {
-                    if (fetcherThreads[i].isAlive()) {
-                        try {
-                            fetcherThreads[i].stop();
-                            LOG.info("kill thread " + i);
-                        } catch (Exception ex) {
-                            LOG.info("Exception", ex);
+            /*等待存活线程结束*/
+            while (activeThreads.get() > 0) {
+                LOG.info("-activeThreads=" + activeThreads.get());
+                try {
+                    Thread.sleep(500);
+                } catch (Exception ex) {
+                }
+                if (System.currentTimeMillis() - waitThreadEndStartTime > Config.WAIT_THREAD_END_TIME) {
+                    LOG.info("kill threads");
+                    for (int i = 0; i < fetcherThreads.length; i++) {
+                        if (fetcherThreads[i].isAlive()) {
+                            try {
+                                fetcherThreads[i].stop();
+                                LOG.info("kill thread " + i);
+                            } catch (Exception ex) {
+                                LOG.info("Exception", ex);
+                            }
                         }
                     }
+                    break;
                 }
-                break;
             }
+            LOG.info("clear all activeThread");
+            feeder.stopFeeder();
+            fetchQueue.clear();
+        } finally {
+            generator.close();
+            LOG.info("close generator:" + generator.getClass().getName());
+            dbManager.closeSegmentWriter();
+            LOG.info("close segmentwriter:" + dbManager.getClass().getName());
         }
-        LOG.info("clear all activeThread");
-        feeder.stopFeeder();
-        fetchQueue.clear();
-        after();
-
     }
 
-    boolean running;
+    volatile boolean running;
 
     /**
      * 停止爬取
      */
     public void stop() {
         running = false;
-    }
-
-    private void after() throws Exception {
-
-        dbUpdater.close();
-        dbUpdater.merge();
-        dbUpdater.unlock();
-
     }
 
     /**
@@ -496,64 +386,20 @@ public class Fetcher {
         this.threads = threads;
     }
 
-    /**
-     * 返回是否存储网页/文件的内容
-     *
-     * @return 是否存储网页/文件的内容
-     */
-    public boolean isIsContentStored() {
-        return isContentStored;
+    public DBManager getDBManager() {
+        return dbManager;
     }
 
-    /**
-     * 设置是否存储网页／文件的内容
-     *
-     * @param isContentStored 是否存储网页/文件的内容
-     */
-    public void setIsContentStored(boolean isContentStored) {
-        this.isContentStored = isContentStored;
+    public void setDBManager(DBManager dbManager) {
+        this.dbManager = dbManager;
     }
 
-    /**
-     * 返回CrawlDB更新器
-     *
-     * @return CrawlDB更新器
-     */
-    public DbUpdater getDbUpdater() {
-        return dbUpdater;
+    public long getExecuteInterval() {
+        return executeInterval;
     }
 
-    /**
-     * 设置CrawlDB更新器
-     *
-     * @param dbUpdater CrawlDB更新器
-     */
-    public void setDbUpdater(DbUpdater dbUpdater) {
-        this.dbUpdater = dbUpdater;
-    }
-
-    public HttpRequester getHttpRequester() {
-        return httpRequester;
-    }
-
-    public void setHttpRequester(HttpRequester httpRequester) {
-        this.httpRequester = httpRequester;
-    }
-
-    public VisitorFactory getVisitorFactory() {
-        return visitorFactory;
-    }
-
-    public void setVisitorFactory(VisitorFactory visitorFactory) {
-        this.visitorFactory = visitorFactory;
-    }
-
-    public int getRetry() {
-        return retry;
-    }
-
-    public void setRetry(int retry) {
-        this.retry = retry;
+    public void setExecuteInterval(long executeInterval) {
+        this.executeInterval = executeInterval;
     }
 
 }

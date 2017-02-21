@@ -7,50 +7,40 @@ WebCollector是一个无须配置、便于二次开发的JAVA爬虫框架（内�
 ###爬虫内核：
 WebCollector致力于维护一个稳定、可扩的爬虫内核，便于开发者进行灵活的二次开发。内核具有很强的扩展性，用户可以在内核基础上开发自己想要的爬虫。源码中集成了Jsoup，可进行精准的网页解析。
 
-###1.x：
-WebCollector 1.x版本现已转移到[http://git.oschina.net/webcollector/WebCollector-1.x](http://git.oschina.net/webcollector/WebCollector-1.x)维护，建议使用2.x版本。
+###教程:
+WebCollector的开源中国项目主页中可找到教程列表：[http://www.oschina.net/p/webcollector](http://www.oschina.net/p/webcollector)
+
 
 ###2.x：
 WebCollector 2.x版本特性：
-* 1）自定义遍历策略，可完成更为复杂的遍历业务，例如分页、AJAX
-* 2）内置Berkeley DB管理URL，可以处理更大量级的网页
-* 3）集成selenium，可以对javascript生成信息进行抽取
-* 4）直接支持多代理随机切换
-* 5）集成spring jdbc和mysql connector，方便数据持久化
-* 6）集成json解析器
-* 7）使用slf4j作为日志门面
-* 8）修改http请求接口，用户自定义http请求更加方便
-* 9）2.10版开始新增新闻网页正文自动提取算法，可自动抽取新闻网页正文、标题和日期
-
-###Maven：
-```xml
-    <dependency>
-        <groupId>cn.edu.hfut.dmic.webcollector</groupId>
-        <artifactId>WebCollector</artifactId>
-        <version>2.09</version>
-    </dependency>
-```
+ * 1）自定义遍历策略，可完成更为复杂的遍历业务，例如分页、AJAX
+ * 2）可以为每个URL设置附加信息(MetaData)，利用附加信息可以完成很多复杂业务，例如深度获取、锚文本获取、引用页面获取、POST参数传递、增量更新等。
+ * 3）使用插件机制，WebCollector内置两套插件。
+ * 4）内置一套基于内存的插件（RamCrawler)，不依赖文件系统或数据库，适合一次性爬取，例如实时爬取搜索引擎。
+ * 5）内置一套基于Berkeley DB（BreadthCrawler)的插件：适合处理长期和大量级的任务，并具有断点爬取功能，不会因为宕机、关闭导致数据丢失。 
+ * 6）集成selenium，可以对javascript生成信息进行抽取
+ * 7）可轻松自定义http请求，并内置多代理随机切换功能。 可通过定义http请求实现模拟登录。 
+ * 8）使用slf4j作为日志门面，可对接多种日志
 
 
-WebCollector 2.x教程：
-* [WebCollector 2.x tutorial 2 (BreadthCrawler中文教程)](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/TutorialCrawler2.java)
-* [WebCollector 2.x 新闻网页正文自动提取算法](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/TutorialContentExtractor.java)
-* [WebCollector 2.x 抽取器 (Extractor和MultiExtractorCrawler)](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/TutorialExtractor.java)
-* [WebCollector爬取JS生成数据](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoJSCrawler.java)
-* [WebCollector爬取搜狗搜索（分页）](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoSogouCrawler.java)
-* [WebCollector爬取JSON数据](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoJsonCrawler.java)
-* [使用SoupLang脚本同时管理多个页面爬取](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoSoupLangCrawler.java)     [SoupLang脚本](https://github.com/CrawlScript/WebCollector/blob/master/WebCollectorExample/src/main/resources/example/DemoRule1.xml)
-* [用WebCollector 2.x爬取新浪微博（无需手动获取cookie)](http://blog.csdn.net/ajaxhu/article/details/42346471)
 
-WebCollector 2.x教程(镜像)：
-* [WebCollector 2.x tutorial 2 (BreadthCrawler中文教程)](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/TutorialCrawler2.java)
-* [WebCollector 2.x 新闻网页正文自动提取算法](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/TutorialContentExtractor.java)
-* [WebCollector 2.x 抽取器 (Extractor和MultiExtractorCrawler)](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/TutorialExtractor.java)
-* [WebCollector爬取JS生成数据](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoJSCrawler.java)
-* [WebCollector爬取搜狗搜索（分页）](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoSogouCrawler.java)
-* [WebCollector爬取JSON数据](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoJsonCrawler.java)
-* [使用SoupLang脚本同时管理多个页面爬取](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/java/cn/edu/hfut/dmic/webcollector/example/DemoSoupLangCrawler.java)     [SoupLang脚本](http://git.oschina.net/webcollector/WebCollector/blob/master/WebCollectorExample/src/main/resources/example/DemoRule1.xml)
-* [用WebCollector 2.x爬取新浪微博（无需手动获取cookie)](http://blog.csdn.net/ajaxhu/article/details/42346471)
+###Jar包
+可在[WebCollector的github主页](https://github.com/CrawlScript/WebCollector)下载所需jar包.
+
++ __webcollector-version-bin.zip__ 包含核心jar包.
+
+
+
+
+###__通过捐款支持WebCollector__
+
+
+维护WebCollector及教程需要花费较大的时间和精力，如果你喜欢WebCollector的话，欢迎通过捐款的方式，支持开发者的工作，非常感谢！
+
+你可以使用支付宝钱包扫描下方的二维码进行捐款， 或者通过向支付宝帐号 __hujunxianligong@126.com__转帐进行捐款。
+
+<img src="http://img.blog.csdn.net/20160216133214332" width="200px"></img>
+
 
 
 

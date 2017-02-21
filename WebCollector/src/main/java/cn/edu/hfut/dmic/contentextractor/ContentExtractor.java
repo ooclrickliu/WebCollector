@@ -21,7 +21,6 @@ import cn.edu.hfut.dmic.webcollector.net.HttpRequest;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -453,7 +452,7 @@ public class ContentExtractor {
     /*输入URL，获取正文所在Element*/
     public static Element getContentElementByUrl(String url) throws Exception {
         HttpRequest request = new HttpRequest(url);
-        String html = request.getResponse().getHtmlByCharsetDetect();
+        String html = request.response().decode();
         return getContentElementByHtml(html, url);
     }
 
@@ -478,7 +477,7 @@ public class ContentExtractor {
     /*输入URL，获取正文文本*/
     public static String getContentByUrl(String url) throws Exception {
         HttpRequest request = new HttpRequest(url);
-        String html = request.getResponse().getHtmlByCharsetDetect();
+        String html = request.response().decode();
         return getContentByHtml(html, url);
     }
 
@@ -503,7 +502,7 @@ public class ContentExtractor {
     /*输入URL，获取结构化新闻信息*/
     public static News getNewsByUrl(String url) throws Exception {
         HttpRequest request = new HttpRequest(url);
-        String html = request.getResponse().getHtmlByCharsetDetect();
+        String html = request.response().decode();
         return getNewsByHtml(html, url);
     }
 
